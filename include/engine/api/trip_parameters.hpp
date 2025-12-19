@@ -68,6 +68,7 @@ struct TripParameters : public RouteParameters
     SourceType source = SourceType::Any;
     DestinationType destination = DestinationType::Any;
     bool roundtrip = true;
+    bool route_points = false;
 
     bool IsValid() const { return RouteParameters::IsValid(); }
 };
