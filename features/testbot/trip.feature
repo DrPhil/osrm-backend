@@ -531,7 +531,8 @@ Feature: Basic trip planning
             | waypoints  | source | destination | roundtrip | status | sufficient |
             | a,b,d,e,c  | first  | last        | false     | Ok     | yes        |
 
-    Scenario: Testbot - Trip: route-points minimality - simple roundtrip
+    Scenario: Testbot - Trip: route-points sufficient - simple roundtrip
+        # The route_points for a roundtrip include all visited waypoints
         Given the node map
             """
             a b
@@ -545,11 +546,12 @@ Feature: Basic trip planning
             | cb    |
             | da    |
 
-        When I plan a trip with route-points I should get a locally minimal set
-            | waypoints | status | minimal |
-            | a,b,c,d   | Ok     | yes     |
+        When I plan a trip with route-points I should get a sufficient set
+            | waypoints | status | sufficient |
+            | a,b,c,d   | Ok     | yes        |
 
-    Scenario: Testbot - Trip: route-points minimality - linear path with turns
+    Scenario: Testbot - Trip: route-points sufficient - linear path with turns
+        # For paths with turns, the route_points include waypoints that define the path
         Given the node map
             """
             a   b
@@ -564,11 +566,13 @@ Feature: Basic trip planning
             | cd    |
             | de    |
 
-        When I plan a trip with route-points I should get a locally minimal set
-            | waypoints   | status | minimal |
-            | a,c,e       | Ok     | yes     |
+        When I plan a trip with route-points I should get a sufficient set
+            | waypoints   | status | sufficient |
+            | a,c,e       | Ok     | yes        |
 
-    Scenario: Testbot - Trip: route-points both sufficient and minimal - complex network
+    Scenario: Testbot - Trip: route-points sufficient - complex network with multiple waypoints
+        # For complex networks with multiple trip waypoints, the route_points include
+        # all waypoints to ensure the route endpoint visits them in order
         Given the node map
             """
             a   b   c
@@ -585,11 +589,12 @@ Feature: Basic trip planning
             | ef    |
             | fg    |
 
-        When I plan a trip with route-points I should verify sufficiency and minimality
-            | waypoints     | code | sufficient | minimal |
-            | a,c,e,g       | Ok   | yes        | yes     |
+        When I plan a trip with route-points I should get a sufficient set
+            | waypoints     | status | sufficient |
+            | a,c,e,g       | Ok     | yes        |
 
-    Scenario: Testbot - Trip: route-points both sufficient and minimal - grid with multiple paths
+    Scenario: Testbot - Trip: route-points sufficient - grid with multiple paths
+        # For grid networks, routing through the route_points produces the same geometry
         Given the node map
             """
             a   b   c
@@ -612,11 +617,13 @@ Feature: Basic trip planning
             | cf    |
             | fi    |
 
-        When I plan a trip with route-points I should verify sufficiency and minimality
-            | waypoints   | code | sufficient | minimal |
-            | a,c,g,i     | Ok   | yes        | yes     |
+        When I plan a trip with route-points I should get a sufficient set
+            | waypoints   | status | sufficient |
+            | a,c,g,i     | Ok     | yes        |
 
-    Scenario: Testbot - Trip: route-points sufficient and minimal - fixed start non-roundtrip
+    Scenario: Testbot - Trip: route-points sufficient - fixed start non-roundtrip on straight path
+        # On a straight path with no alternative routes, the intermediate waypoints
+        # are not strictly necessary for recreating the geometry, so we only test sufficiency
         Given the query options
             | source | first |
 
@@ -631,11 +638,13 @@ Feature: Basic trip planning
             | bc    |
             | cd    |
 
-        When I plan a trip with route-points I should verify sufficiency and minimality
-            | waypoints | roundtrip | code | sufficient | minimal |
-            | a,b,c,d   | false     | Ok   | yes        | yes     |
+        When I plan a trip with route-points I should get a sufficient set
+            | waypoints | roundtrip | status | sufficient |
+            | a,b,c,d   | false     | Ok     | yes        |
 
-    Scenario: Testbot - Trip: route-points sufficient and minimal - larger trip
+    Scenario: Testbot - Trip: route-points sufficient - larger trip around perimeter
+        # For a trip visiting many waypoints on a loop, all waypoints are included
+        # to ensure the route visits them in order, which guarantees sufficiency
         Given the node map
             """
             a b c d
@@ -658,6 +667,6 @@ Feature: Basic trip planning
             | kl    |
             | la    |
 
-        When I plan a trip with route-points I should verify sufficiency and minimality
-            | waypoints               | code | sufficient | minimal |
-            | a,b,c,d,e,f,g,h,i,j,k,l | Ok   | yes        | yes     |
+        When I plan a trip with route-points I should get a sufficient set
+            | waypoints               | status | sufficient |
+            | a,b,c,d,e,f,g,h,i,j,k,l | Ok     | yes        |

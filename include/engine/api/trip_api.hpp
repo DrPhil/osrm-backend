@@ -8,10 +8,78 @@
 
 #include "engine/internal_route_result.hpp"
 
+#include "guidance/turn_instruction.hpp"
+
 #include "util/integer_range.hpp"
 
 namespace osrm::engine::api
 {
+
+// Helper function to determine if a maneuver involves a significant direction change
+// based on the bearing change. This is more robust than relying on maneuver types
+// which can vary based on the profile.
+inline bool hasSignificantBearingChange(short bearing_before, short bearing_after)
+{
+    // Calculate the angular difference (handling wrap-around at 360)
+    int diff = std::abs(static_cast<int>(bearing_after) - static_cast<int>(bearing_before));
+    if (diff > 180)
+    {
+        diff = 360 - diff;
+    }
+    // Consider anything more than 20 degrees as a significant direction change
+    // This threshold catches corners while ignoring slight curves
+    return diff > 20;
+}
+
+// Helper function to determine if a maneuver is a decision point that affects routing
+// These are maneuvers where the driver must make a choice that affects the path
+inline bool isRouteDecisionPoint(const osrm::guidance::TurnInstruction &instruction,
+                                  short bearing_before,
+                                  short bearing_after)
+{
+    using namespace osrm::guidance::TurnType;
+
+    // First check by maneuver type - these are definite decision points
+    switch (instruction.type)
+    {
+    // These are actual decision points that affect the route
+    case Turn:
+    case Merge:
+    case OnRamp:
+    case OffRamp:
+    case Fork:
+    case EndOfRoad:
+    case EnterRoundabout:
+    case EnterAndExitRoundabout:
+    case EnterRotary:
+    case EnterAndExitRotary:
+    case EnterRoundaboutIntersection:
+    case EnterAndExitRoundaboutIntersection:
+    case EnterRoundaboutAtExit:
+    case ExitRoundabout:
+    case EnterRotaryAtExit:
+    case ExitRotary:
+    case EnterRoundaboutIntersectionAtExit:
+    case ExitRoundaboutIntersection:
+    case Sliproad:
+        return true;
+
+    // For Continue and NewName, check if there's a significant bearing change
+    // This catches corners that might not be classified as turns
+    case Continue:
+    case NewName:
+        return hasSignificantBearingChange(bearing_before, bearing_after);
+
+    // These don't affect the route choice
+    case Notification: // mode changes, restrictions
+    case NoTurn:       // mid-segment
+    case Suppressed:   // suppressed turn
+    case StayOnRoundabout:
+    case Invalid:
+    default:
+        return false;
+    }
+}
 
 class TripAPI final : public RouteAPI
 {
@@ -138,28 +206,63 @@ class TripAPI final : public RouteAPI
 
         // Extract route points from maneuver locations
         // These are the minimal set of waypoints that would recreate this route
+        // We only include decision points (turns, forks, etc.) not informational maneuvers
         util::json::Array trip_route_points;
 
-        for (const auto &leg : legs)
+        // Track last added location to avoid duplicates
+        std::optional<util::Coordinate> last_added_location;
+
+        auto add_route_point = [&](const util::Coordinate &coord)
         {
-            for (const auto &step : leg.steps)
+            // Skip if this is the same location as the last added point
+            if (last_added_location &&
+                last_added_location->lon == coord.lon &&
+                last_added_location->lat == coord.lat)
             {
-                // Skip the final "arrive" step's location as it's typically the same as the next
-                // leg's start or the trip's end
+                return;
+            }
+
+            util::json::Object point;
+            util::json::Array location;
+            location.values.push_back(
+                util::json::Number{util::toFloating(coord.lon).__value});
+            location.values.push_back(
+                util::json::Number{util::toFloating(coord.lat).__value});
+            point.values.emplace("location", std::move(location));
+            trip_route_points.values.push_back(std::move(point));
+            last_added_location = coord;
+        };
+
+        for (std::size_t leg_idx = 0; leg_idx < legs.size(); ++leg_idx)
+        {
+            const auto &leg = legs[leg_idx];
+            for (std::size_t step_idx = 0; step_idx < leg.steps.size(); ++step_idx)
+            {
+                const auto &step = leg.steps[step_idx];
+
+                // Always include depart steps - these are the trip waypoints
+                // that must be visited to recreate the route
+                if (step.maneuver.waypoint_type == guidance::WaypointType::Depart)
+                {
+                    add_route_point(step.maneuver.location);
+                    continue;
+                }
+
+                // Skip arrive steps - we'll add the final destination separately
                 if (step.maneuver.waypoint_type == guidance::WaypointType::Arrive)
                 {
                     continue;
                 }
 
-                // Include all other maneuver locations (depart, turns, etc.)
-                util::json::Object point;
-                util::json::Array location;
-                location.values.push_back(
-                    util::json::Number{util::toFloating(step.maneuver.location.lon).__value});
-                location.values.push_back(
-                    util::json::Number{util::toFloating(step.maneuver.location.lat).__value});
-                point.values.emplace("location", std::move(location));
-                trip_route_points.values.push_back(std::move(point));
+                // For intermediate steps within a leg, only include those that
+                // are actual decision points (turns, forks, etc.) or have
+                // significant bearing changes
+                if (isRouteDecisionPoint(step.maneuver.instruction,
+                                         step.maneuver.bearing_before,
+                                         step.maneuver.bearing_after))
+                {
+                    add_route_point(step.maneuver.location);
+                }
             }
         }
 
@@ -167,14 +270,7 @@ class TripAPI final : public RouteAPI
         if (!legs.empty() && !legs.back().steps.empty())
         {
             const auto &final_step = legs.back().steps.back();
-            util::json::Object point;
-            util::json::Array location;
-            location.values.push_back(
-                util::json::Number{util::toFloating(final_step.maneuver.location.lon).__value});
-            location.values.push_back(
-                util::json::Number{util::toFloating(final_step.maneuver.location.lat).__value});
-            point.values.emplace("location", std::move(location));
-            trip_route_points.values.push_back(std::move(point));
+            add_route_point(final_step.maneuver.location);
         }
 
         // Add this trip's route points to the overall collection

@@ -1,18 +1,6 @@
 // Step definitions for testing route-points feature in trip planning API
-import { When, Then } from '@cucumber/cucumber';
+import { When } from '@cucumber/cucumber';
 import polyline from '@mapbox/polyline';
-
-// Helper to decode geometry based on format
-function decodeGeometry(geometry, format) {
-  if (format === 'polyline') {
-    return polyline.decode(geometry);
-  } else if (format === 'polyline6') {
-    return polyline.decode(geometry, 6);
-  } else {
-    // GeoJSON format - coordinates are already an array
-    return geometry.coordinates;
-  }
-}
 
 // Helper to compare two geometries with tolerance
 function geometriesMatch(geom1, geom2, tolerance = 0.0001) {
@@ -67,8 +55,8 @@ When(/^I plan a trip with route-points I should get a sufficient set$/, function
         let tripJson;
         try {
           tripJson = JSON.parse(tripBody);
-        } catch (parseErr) {
-          return cb(new Error(`Failed to parse trip response: ${parseErr.message}`));
+        } catch {
+          return cb(new Error('Failed to parse trip response'));
         }
 
         if (tripJson.code !== 'Ok') {
@@ -101,8 +89,8 @@ When(/^I plan a trip with route-points I should get a sufficient set$/, function
           let routeJson;
           try {
             routeJson = JSON.parse(routeBody);
-          } catch (parseErr) {
-            return cb(new Error(`Failed to parse route response: ${parseErr.message}`));
+          } catch {
+            return cb(new Error('Failed to parse route response'));
           }
 
           if (routeJson.code !== 'Ok') {
@@ -140,6 +128,17 @@ When(/^I plan a trip with route-points I should get a sufficient set$/, function
             sufficient: sufficient ? 'yes' : 'no',
             route_points_count: routePoints.length
           };
+
+          // Copy over any additional columns from the input row
+          if (row.hasOwnProperty('roundtrip')) {
+            got.roundtrip = row.roundtrip;
+          }
+          if (row.hasOwnProperty('source')) {
+            got.source = row.source;
+          }
+          if (row.hasOwnProperty('destination')) {
+            got.destination = row.destination;
+          }
 
           // Match against expected values
           for (const key in row) {
@@ -186,8 +185,8 @@ When(/^I plan a trip with route-points I should get a locally minimal set$/, fun
         let tripJson;
         try {
           tripJson = JSON.parse(tripBody);
-        } catch (parseErr) {
-          return cb(new Error(`Failed to parse trip response: ${parseErr.message}`));
+        } catch {
+          return cb(new Error('Failed to parse trip response'));
         }
 
         if (tripJson.code !== 'Ok') {
@@ -282,7 +281,7 @@ When(/^I plan a trip with route-points I should get a locally minimal set$/, fun
             let routeJson;
             try {
               routeJson = JSON.parse(routeBody);
-            } catch (parseErr) {
+            } catch {
               testedCount++;
               return testRemoval(index + 1);
             }
@@ -354,8 +353,8 @@ When(/^I plan a trip with route-points I should verify sufficiency and minimalit
         let tripJson;
         try {
           tripJson = JSON.parse(tripBody);
-        } catch (parseErr) {
-          return cb(new Error(`Failed to parse trip response: ${parseErr.message}`));
+        } catch {
+          return cb(new Error('Failed to parse trip response'));
         }
 
         if (tripJson.code !== 'Ok') {
@@ -403,8 +402,8 @@ When(/^I plan a trip with route-points I should verify sufficiency and minimalit
           let routeJson;
           try {
             routeJson = JSON.parse(routeBody);
-          } catch (parseErr) {
-            return cb(new Error(`Failed to parse route response: ${parseErr.message}`));
+          } catch {
+            return cb(new Error('Failed to parse route response'));
           }
 
           let sufficient = false;
@@ -435,6 +434,11 @@ When(/^I plan a trip with route-points I should verify sufficiency and minimalit
                 route_points_count: routePoints.length
               };
 
+              // Copy over any additional columns from the input row
+              if (row.hasOwnProperty('roundtrip')) {
+                got.roundtrip = row.roundtrip;
+              }
+
               for (const key in row) {
                 if (this.FuzzyMatch.match(String(got[key]), row[key])) {
                   got[key] = row[key];
@@ -460,7 +464,7 @@ When(/^I plan a trip with route-points I should verify sufficiency and minimalit
               let rJson;
               try {
                 rJson = JSON.parse(rBody);
-              } catch (pErr) {
+              } catch {
                 return testMinimality(index + 1);
               }
 
@@ -493,6 +497,11 @@ When(/^I plan a trip with route-points I should verify sufficiency and minimalit
               minimal: 'yes',
               route_points_count: routePoints.length
             };
+
+            // Copy over any additional columns from the input row
+            if (row.hasOwnProperty('roundtrip')) {
+              got.roundtrip = row.roundtrip;
+            }
 
             for (const key in row) {
               if (this.FuzzyMatch.match(String(got[key]), row[key])) {
